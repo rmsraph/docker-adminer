@@ -28,7 +28,7 @@ The `6/Dockerfile` uses a Chainguard PHP 8.5 development image only in the build
 
 ## Publish to Docker Hub
 
-The GitHub Actions workflow builds and tests the image on pushes and pull requests. On pushes to `main`/`master` and version tags (`v*`), it publishes the Adminer patch version and these tags: `6.3.0`, `6`, `latest`, `6.3.0-standalone`, `6-standalone`, and `standalone`. The patch-version tags are generated from `ADMINER_VERSION` in `6/Dockerfile`.
+The GitHub Actions workflow builds and tests the image on pushes and pull requests. On pushes to `main`/`master` and version tags (`v*`), it publishes a multi-platform manifest for `linux/amd64` and `linux/arm64` under these tags: the Adminer patch version and `6`, `latest`, plus the `-standalone` aliases and `standalone` (for example, `6.3.0`, `6`, `latest`, `6.3.0-standalone`, `6-standalone`, and `standalone`). The patch-version tags are generated from `ADMINER_VERSION` in `6/Dockerfile`.
 
 Create the `adminer` repository under your Docker Hub namespace before enabling automatic pushes.
 
