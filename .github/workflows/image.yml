@@ -1,121 +1,72 @@
 name: Build Docker Image
 
 on:
-- push
-- pull_request
+  push:
+  pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        variant:
-        - "5"
-        - "5/fastcgi"
-        - "6"
-        - "6/fastcgi"
     steps:
-    - uses: actions/checkout@v7
-    - name: Build the image.
-      id: build
-      run: |
-        printf "::group::Sending context\n"
-        IMAGE=adminer:${VARIANT/\//-}-$(date +%s)
-        docker build "$VARIANT" --tag "$IMAGE" |sed 's/^Step/::endgroup::\n::group::Step/'
-        printf "::endgroup::\n"
-        printf "image=%s\n" "$IMAGE" >> $GITHUB_OUTPUT
-        printf "version=%s\n" "$(awk '/^ENV\s+ADMINER_VERSION/{print $3}' "$VARIANT/Dockerfile")" >> $GITHUB_OUTPUT
-      env:
-        VARIANT: ${{ matrix.variant }}
-    - name: Smoketest
-      run: |
-        docker run --name $container_name -d ${{ steps.build.outputs.image }}
-      env:
-        container_name: adminer_smoke 
-    - name: Verify a restart works.
-      if: ${{ ! contains(steps.build.outputs.image, 'fastcgi') }}
-      run: |
-        docker run --name $container_name -d ${{ steps.build.outputs.image }}
-        docker run -i --rm --link $container_name:$container_name buildpack-deps:curl \
-          curl -fsSL http://$container_name:8080/
-        docker restart $container_name
-        docker run -i --rm --link $container_name:$container_name buildpack-deps:curl \
-          curl -fsSL http://$container_name:8080/
-      env:
-        container_name: adminer_restart
-    - name: Verify version.
-      if: ${{ ! contains(steps.build.outputs.image, 'fastcgi') }}
-      run: |
-        docker run --name $container_name -d ${{ steps.build.outputs.image }}
-        docker run -i --rm --link $container_name:$container_name buildpack-deps:curl \
-          curl -fsSL http://$container_name:8080/ \
-          |grep '<span class=.version.>${{ steps.build.outputs.version }}'
-      env:
-        container_name: adminer_version
-    - name: Verify that no warnings appear.
-      if: ${{ ! contains(steps.build.outputs.image, 'fastcgi') }}
-      run: |
-        docker run --name $container_name -d ${{ steps.build.outputs.image }}
-        ! docker run -i --rm --link $container_name:$container_name buildpack-deps:curl \
-          curl -fsSL http://$container_name:8080/ \
-          |grep '<b>Warning</b>:'
-      env:
-        container_name: adminer_warnings
-    - name: Verify that the design works.
-      if: ${{ ! contains(steps.build.outputs.image, 'fastcgi') }}
-      run: |
-        docker run --name $container_name -d -e ADMINER_DESIGN=nette ${{ steps.build.outputs.image }}
-        docker run -i --rm --link $container_name:$container_name buildpack-deps:curl \
-          curl -fsSL http://$container_name:8080/ \
-          |grep 'adminer.css'
-        docker run -i --rm --link $container_name:$container_name buildpack-deps:curl \
-          curl -fsSL http://$container_name:8080/adminer.css \
-          |grep 'Nette'
-      env:
-        container_name: adminer_design
-    - name: Verify that the default server works.
-      if: ${{ ! contains(steps.build.outputs.image, 'fastcgi') }}
-      run: |
-        docker run --name $container_name -d -e ADMINER_DEFAULT_SERVER=ADMINER_DEFAULT_SERVER_WORKS ${{ steps.build.outputs.image }}
-        docker run -i --rm --link $container_name:$container_name buildpack-deps:curl \
-          curl -fsSL http://$container_name:8080/ \
-          |grep 'ADMINER_DEFAULT_SERVER_WORKS'
-      env:
-        container_name: adminer_defaultserver
-    - name: Verify that loading plugins work.
-      if: ${{ ! contains(steps.build.outputs.image, 'fastcgi') && ! startsWith(matrix.variant, '6') }}
-      run: |
-        docker run --name $container_name -d -e ADMINER_PLUGINS="tables-filter version-noverify" ${{ steps.build.outputs.image }}
-        docker run -i --rm --link $container_name:$container_name buildpack-deps:curl \
-          curl -fsSL http://$container_name:8080/ \
-          |grep 'verifyVersion ='
-      env:
-        container_name: adminer_plugins
-    - name: Verify that loading plugins work.
-      if: ${{ ! contains(steps.build.outputs.image, 'fastcgi') && startsWith(matrix.variant, '6') }}
-      run: |
-        # Since Adminer 6, the version-noverify plugin no longer injects a
-        # 'verifyVersion =' script. Instead it suppresses the version check,
-        # so the 'partial(verifyVersion' onload handler (present by default)
-        # must disappear when the plugin is loaded.
-        docker run --name ${container_name}_default -d ${{ steps.build.outputs.image }}
-        docker run -i --rm --link ${container_name}_default:${container_name}_default buildpack-deps:curl \
-          curl -fsSL http://${container_name}_default:8080/ \
-          |grep 'partial(verifyVersion'
-        docker run --name $container_name -d -e ADMINER_PLUGINS="tables-filter version-noverify" ${{ steps.build.outputs.image }}
-        docker run -i --rm --link $container_name:$container_name buildpack-deps:curl \
-          curl -fsSL http://$container_name:8080/ \
-          |grep '<span class=.version.>'
-        ! docker run -i --rm --link $container_name:$container_name buildpack-deps:curl \
-          curl -fsSL http://$container_name:8080/ \
-          |grep 'partial(verifyVersion'
-      env:
-        container_name: adminer_plugins
-    - name: Show Containers and Images
-      run: |
-        printf "::group::docker ps -a\n"
-        docker ps -a
-        printf "::endgroup::\n"
-        printf "::group::docker images\n"
-        docker images
-        printf "::endgroup::\n"
+      - uses: actions/checkout@v7
+      - name: Build the image
+        id: build
+        run: |
+          IMAGE="adminer:${GITHUB_SHA}"
+          docker build ./6 --tag "$IMAGE"
+          printf 'image=%s\n' "$IMAGE" >> "$GITHUB_OUTPUT"
+          VERSION="$(awk '$1 == "ENV" && $2 ~ /^ADMINER_VERSION=/ { sub(/^ADMINER_VERSION=/, "", $2); print $2; exit }' 6/Dockerfile)"
+          printf 'version=%s\n' "$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Smoke test
+        run: docker run --name adminer_smoke -d "${{ steps.build.outputs.image }}"
+      - name: Verify database drivers
+        env:
+          IMAGE: ${{ steps.build.outputs.image }}
+        run: |
+          modules="$(docker run --rm --entrypoint php "$IMAGE" -m)"
+          for module in mysqli PDO pdo_mysql pdo_odbc pdo_dblib pdo_pgsql pdo_sqlite; do
+            if ! grep -Fxiq "$module" <<< "$modules"; then
+              echo "Missing PHP extension: $module" >&2
+              exit 1
+            fi
+          done
+      - name: Verify a restart works
+        run: |
+          docker run --name adminer_restart -d "${{ steps.build.outputs.image }}"
+          docker run -i --rm --link adminer_restart:adminer_restart buildpack-deps:curl \
+            curl -fsSL http://adminer_restart:8080/
+          docker restart adminer_restart
+          docker run -i --rm --link adminer_restart:adminer_restart buildpack-deps:curl \
+            curl -fsSL http://adminer_restart:8080/
+      - name: Verify version
+        run: |
+          docker run --name adminer_version -d "${{ steps.build.outputs.image }}"
+          docker run -i --rm --link adminer_version:adminer_version buildpack-deps:curl \
+            curl -fsSL http://adminer_version:8080/ \
+            | grep '<span class=.version.>${{ steps.build.outputs.version }}'
+      - name: Verify that no warnings appear
+        run: |
+          docker run --name adminer_warnings -d "${{ steps.build.outputs.image }}"
+          ! docker run -i --rm --link adminer_warnings:adminer_warnings buildpack-deps:curl \
+            curl -fsSL http://adminer_warnings:8080/ \
+            | grep '<b>Warning</b>:'
+      - name: Publish to Docker Hub
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IMAGE: ${{ steps.build.outputs.image }}
+          VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "Set DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repository secrets to publish." >&2
+            exit 1
+          fi
+          printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+          for tag in "$VERSION" 6 latest "$VERSION-standalone" 6-standalone standalone; do
+            docker tag "$IMAGE" "$DOCKERHUB_USERNAME/adminer:$tag"
+            docker push "$DOCKERHUB_USERNAME/adminer:$tag"
+          done

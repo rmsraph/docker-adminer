@@ -5,9 +5,8 @@ cd "$(dirname "$(readlink -f "$BASH_SOURCE")")"
 
 versions=( "$@" )
 if [ ${#versions[@]} -eq 0 ]; then
-	versions=( */ )
+	versions=( 6 )
 fi
-versions=( "${versions[@]%/}" )
 
 allVersions="$(
 	git ls-remote --tags https://github.com/vrana/adminer.git \
@@ -24,6 +23,7 @@ for version in "${versions[@]}"; do
 	)"
 	if [ -z "$fullVersion" ]; then
 		echo >&2 "error: cannot determine full version for '$version'"
+		exit 1
 	fi
 
 	echo "$version: $fullVersion"
@@ -46,6 +46,5 @@ for version in "${versions[@]}"; do
 		-e 's/^(ENV\s+ADMINER_VERSION=).*/\1'"$fullVersion"'/' \
 		-e 's/^(ENV\s+ADMINER_DOWNLOAD_SHA256=).*/\1'"$downloadSha256"'/' \
 		-e 's/^(ENV\s+ADMINER_SRC_DOWNLOAD_SHA256=).*/\1'"$srcDownloadSha256"'/' \
-		"$version/fastcgi/Dockerfile" \
 		"$version/Dockerfile"
 done
